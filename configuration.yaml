@@ -1,0 +1,119 @@
+
+homeassistant:
+  name: Home
+  latitude: !secret latitude
+  longitude: !secret longitude
+  elevation: 10
+  unit_system: metric
+  currency: TWD
+  country: TW
+  time_zone: Asia/Taipei
+  external_url: "http://114.38.2.81:8123"
+  internal_url: "http://10.0.0.192:8123"
+  customize: !include customize.yaml
+
+default_config:
+
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+remote: !include broadlink.yaml
+
+input_boolean:
+  go_out_mode:
+    name: 出門
+    icon: mdi:walk
+  come_home_mode:
+    name: 回家
+    icon: mdi:home
+  good_night_mode:
+    name: 晚安
+    icon: mdi:weather-night
+  good_morning_mode:
+    name: 早安
+    icon: mdi:weather-sunset-up
+  sleep_sofa:
+    name: 睡沙發
+    icon: mdi:sofa
+  water_full_livingroom:
+    name: 客廳除濕機滿水
+    icon: mdi:water-off
+  water_full_bedroom:
+    name: 主臥除濕機滿水
+    icon: mdi:water-off
+  water_full_bedroom2:
+    name: 次臥除濕機滿水
+    icon: mdi:water-off
+  door_opened_recently:
+    name: 門在10分鐘內開過
+    icon: mdi:door
+  bathroom_heater_mode:
+    name: 浴室暖風機模式
+    initial: false
+    icon: mdi:fan
+  shower_ac_triggered:
+    name: 洗澡冷氣已觸發
+    initial: false
+
+input_datetime:
+  last_go_out_time:
+    name: 上次出門時間
+    has_date: true
+    has_time: true
+  last_shower_cooling_time:
+    name: 上次洗澡開冷氣
+    has_date: true
+    has_time: true
+  last_motion_bathroom_d:
+    name: 廁所門口上次有人
+    has_date: true
+    has_time: true
+
+tts:
+  - platform: google_translate
+    language: zh-tw
+
+template:
+  - sensor:
+      - name: "空氣品質 - PM2.5"
+        state: "{{ states('sensor.aircube_plus_3f0354_pm2_5') }}"
+        unit_of_measurement: "µg/m³"
+      - name: "空氣品質 - CO2"
+        state: "{{ states('sensor.aircube_plus_3f0354_co2') }}"
+        unit_of_measurement: "ppm"
+      - name: "空氣品質 - TVOC"
+        state: "{{ states('sensor.aircube_plus_3f0354_tvoc') }}"
+        unit_of_measurement: "ppb"
+      - name: "空氣品質 - 溫度"
+        state: "{{ states('sensor.aircube_plus_3f0354_temperature') }}"
+        unit_of_measurement: "°C"
+      - name: "空氣品質 - 濕度"
+        state: "{{ states('sensor.aircube_plus_3f0354_humidity') }}"
+        unit_of_measurement: "%"
+
+weather:
+  - platform: home
+
+group:
+  family:
+    name: 家人
+    entities:
+      - device_tracker.amber_s_iphone
+      - device_tracker.iphone
+
+counter:
+  bathroom_shower_motion:
+    name: 濕區8分鐘內觸發次數
+    initial: 0
+    step: 1
+
+binary_sensor:
+  - platform: template
+    sensors:
+      someone_showering:
+        friendly_name: "有人在洗澡"
+        value_template: >
+          {{ states('counter.bathroom_shower_motion')|int >= 2 }}
