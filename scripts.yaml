@@ -50,7 +50,6 @@ send_clothes_rack_up:
         entity_id: remote.broadlink_remote
         device: clothes_rack
         command: up
-  mode: single
 
 send_clothes_rack_down:
   alias: 曬衣架「下降」
@@ -60,7 +59,6 @@ send_clothes_rack_down:
         entity_id: remote.broadlink_remote
         device: clothes_rack
         command: down
-  mode: single
 
 send_clothes_rack_stop:
   alias: 曬衣架「停止」
@@ -70,7 +68,6 @@ send_clothes_rack_stop:
         entity_id: remote.broadlink_remote
         device: clothes_rack
         command: stop
-  mode: single
 
 send_clothes_rack_light:
   alias: 曬衣架「照明」
@@ -80,4 +77,40 @@ send_clothes_rack_light:
         entity_id: remote.broadlink_remote
         device: clothes_rack
         command: light
+
+ask_clothes_rack:
+  alias: 詢問是否使用曬衣架
+  sequence:
+    - service: tts.google_translate_say
+      data:
+        entity_id: media_player.ke_ting
+        message: 洗衣已完成，是否要下降曬衣架？
+    - delay:
+        minutes: 1
+    - condition: state
+      entity_id: input_boolean.clothes_rack_needed
+      state: 'on'
+    - service: script.send_clothes_rack_down
+    - condition: state
+      entity_id: sun.sun
+      state: 'below_horizon'
+    - service: light.turn_on
+      entity_id: light.switch_balcony_front
+
+# D2 - 洗澡冷氣腳本（script.shower_ac_on）
+shower_ac_on:
+  alias: 洗澡自動開冷氣
+  sequence:
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.bedroom
+      data:
+        temperature: 23
+    - service: climate.turn_on
+      target:
+        entity_id: climate.bedroom
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.shower_ac_triggered
   mode: single
+

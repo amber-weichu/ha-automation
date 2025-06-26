@@ -1,4 +1,4 @@
-
+## configuration.yaml
 homeassistant:
   name: Home
   latitude: !secret latitude
@@ -38,6 +38,9 @@ input_boolean:
   sleep_sofa:
     name: 睡沙發
     icon: mdi:sofa
+  guest_mode:
+    name: 來賓模式
+    icon: mdi:account-group
   water_full_livingroom:
     name: 客廳除濕機滿水
     icon: mdi:water-off

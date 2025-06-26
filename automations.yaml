@@ -1,152 +1,477 @@
-# automation.yaml（整理版）
-# 更新時間：20250625_1555
-# 分類說明如下：
-# 01- 出門 / 回家 相關（含掃地機器人、SSID、除濕機）
-# 02- 洗澡 / 暖風機控制
-# 03- 除濕機水滿提醒與解除
-# 04- 除濕機自動控制（出門 / 回家）
-# 05- 臥室燈光（夜間 / 半夜）
-# 
-# 所有自動化皆已依照功能區分類別與編號，方便後續管理。
-
-# 01- 出門 / 回家 相關（含掃地機器人、SSID、除濕機）
-- id: auto_01_go_out_both_away_with_door
-  alias: 出門：兩人離家且門有開過（含第一次出門掃地）
-  mode: single
+### automations.yaml
+# A. 情境自動化
+- id: a1_go_out
+  alias: A1 出門情境
+  description: 所有人離家時觸發出門模式與設備設定
   trigger:
     - platform: state
-      entity_id:
-        - device_tracker.amber_s_iphone
-        - device_tracker.iphone
-      to: not_home
-      for: "00:01:00"
-  condition:
-    - condition: state
-      entity_id: device_tracker.amber_s_iphone
-      state: not_home
-    - condition: state
-      entity_id: device_tracker.iphone
-      state: not_home
-    - condition: state
-      entity_id: input_boolean.door_opened_recently
-      state: "on"
-  action:
-    - variables:
-        last_go_out: "{{ states('input_datetime.last_go_out_time') }}"
-        today: "{{ now().date() }}"
-        last_date: "{{ as_datetime(last_go_out).date() if last_go_out not in ['unknown', 'unavailable'] else today - timedelta(days=1) }}"
-    - choose:
-        - conditions:
-            - condition: template
-              value_template: "{{ last_date != today }}"
-          sequence:
-            - service: button.press
-              target:
-                entity_id: button.roborock_s8_maxv_ultra_ke_ting_ci_wo
-    - service: input_datetime.set_datetime
-      target:
-        entity_id: input_datetime.last_go_out_time
-      data:
-        datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
-    - service: input_boolean.turn_on
-      target:
-        entity_id: input_boolean.go_out_mode
-    - delay: "00:00:02"
-    - service: input_boolean.turn_off
-      target:
-        entity_id: input_boolean.go_out_mode
-
-- id: auto_02_door_open_record
-  alias: 大門開啟紀錄（10分鐘內有效）
-  trigger:
-    - platform: state
-      entity_id: binary_sensor.door_entry
-      to: "on"
-  action:
-    - service: input_boolean.turn_on
-      entity_id: input_boolean.door_opened_recently
-    - delay: "00:10:00"
-    - service: input_boolean.turn_off
-      entity_id: input_boolean.door_opened_recently
-
-- id: auto_03_come_home_ssid
-  alias: 回家（任一人回家）
-  trigger:
-    - platform: state
-      entity_id:
-        - sensor.amber_s_iphone_ssid
-        - sensor.iphone_ssid
-      to: "RS300"
-  condition:
-    - condition: or
-      conditions:
-        - condition: template
-          value_template: "{{ states('sensor.amber_s_iphone_ssid') == 'RS300' }}"
-        - condition: template
-          value_template: "{{ states('sensor.iphone_ssid') == 'RS300' }}"
-  action:
-    - service: input_boolean.turn_off
-      entity_id: input_boolean.go_out_mode
-    - service: notify.mobile_app_amber_s_iphone
-      data:
-        message: "有人回家了～（除濕機記得看一下）"
-
-- id: auto_04_come_home_device_tracker
-  alias: 回家：任一人回家
-  trigger:
-    - platform: state
-      entity_id:
-        - device_tracker.amber_s_iphone
-        - device_tracker.iphone
-      to: home
+      entity_id: group.family
+      to: 'not_home'
+    - platform: event
+      event_type: event.magic_switch_s1e_go_out_mode
   condition:
     - condition: state
       entity_id: input_boolean.come_home_mode
-      state: "off"
+      state: 'off'
+  action:
+    - service: input_boolean.turn_on
+      entity_id: input_boolean.go_out_mode
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.livingroom
+      data:
+        temperature: 27
+
+- id: a2_come_home
+  alias: A2 回家情境
+  description: 有人回家觸發回家模式
+  trigger:
+    - platform: state
+      entity_id: group.family
+      to: 'home'
+    - platform: state
+      entity_id:
+        - device_tracker.amber_s_iphone
+        - device_tracker.iphone
+      to: 'home'
+    - platform: event
+      event_type: event.magic_switch_s1e_come_home_mode
+  condition:
+    - condition: state
+      entity_id: input_boolean.go_out_mode
+      state: 'on'
+  action:
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.go_out_mode
+    - service: input_boolean.turn_on
+      entity_id: input_boolean.come_home_mode
+
+- id: a3_good_morning
+  alias: A3 早安模式
+  description: 手機 focus 結束後，早上自動觸發早安邏輯
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.liao_s_iphone_focus
+      from: 'on'
+      to: 'off'
+    - platform: event
+      event_type: event.magic_switch_s1e_good_morning_mode
+  condition:
+    - condition: time
+      after: '05:00:00'
+    - condition: state
+      entity_id: input_boolean.good_morning_mode
+      state: 'off'
+  action:
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'home'
+          sequence:
+            - service: cover.open_cover
+              target:
+                entity_id: cover.bedroom
+            - service: humidifier.turn_on
+              target:
+                entity_id: humidifier.dehumidifier_bedroom
+    - service: input_boolean.turn_on
+      entity_id: input_boolean.good_morning_mode
+
+- id: a4_good_night
+  alias: A4 晚安模式
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.liao_s_iphone_focus
+      from: 'off'
+      to: 'on'
+    - platform: event
+      event_type: event.magic_switch_s1e_good_night_mode
+  condition:
+    - condition: state
+      entity_id: input_boolean.good_night_mode
+      state: 'off'
+  action:
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'not_home'
+          sequence:
+            - service: homeassistant.turn_on
+              target:
+                entity_id: input_boolean.good_night_mode
+            - service: remote.send_command
+              data:
+                entity_id: remote.broadlink_remote
+                device: apple_homekit_button
+                command: sleep
+        - conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'home'
+          sequence:
+            - service: light.turn_off
+              entity_id: light.group_bedroom_lights
+            - service: cover.close_cover
+              target:
+                entity_id: cover.bedroom
+            - service: humidifier.turn_on
+              target:
+                entity_id: humidifier.dehumidifier_bedroom
+
+- id: a5_guest_mode
+  alias: A5 來賓模式切換
+  trigger:
+    - platform: event
+      event_type: event.magic_switch_s1e_guest_mode
+  action:
+    - service: input_boolean.toggle
+      entity_id: input_boolean.guest_mode
+      
+# B1 - 客廳除濕機：濕度控制
+- id: b1_livingroom_humidity_start
+  alias: B1 客廳除濕機啟用
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_livingroom_humidity
+      above: 70
+  condition:
     - condition: or
       conditions:
         - condition: state
-          entity_id: device_tracker.amber_s_iphone
-          state: home
+          entity_id: group.family
+          state: "home"
+        - condition: numeric_state
+          entity_id: sensor.dehumidifier_livingroom_humidity
+          above: 50
+  action:
+    - service: humidifier.turn_on
+      entity_id: humidifier.dehumidifier_livingroom
+    - service: fan.turn_on
+      entity_id: fan.dehumidifier_livingroom
+
+- id: b1_livingroom_humidity_close
+  alias: B1-1 客廳除濕機關閉
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_livingroom_humidity
+      below: 55
+  condition:
+    - condition: state
+      entity_id: group.family
+      state: "home"
+  action:
+    - service: humidifier.turn_off
+      entity_id: humidifier.dehumidifier_livingroom
+    - service: fan.turn_off
+      entity_id: fan.dehumidifier_livingroom
+
+- id: b1_2_livingroom_humidity_close_nobody
+  alias: B1-2 客廳除濕機關閉（無人）
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_livingroom_humidity
+      below: 45
+  condition:
+    - condition: state
+      entity_id: group.family
+      state: "not_home"
+  action:
+    - service: humidifier.turn_off
+      entity_id: humidifier.dehumidifier_livingroom
+    - service: fan.turn_off
+      entity_id: fan.dehumidifier_livingroom
+
+# B2 - 主臥除濕機（搭配晚安模式）
+- id: b2_bedroom_humidity_start_with_good_night_mode
+  alias: B2 主臥除濕機啟用
+  trigger:
+    - platform: state
+      entity_id: input_boolean.good_night_mode
+      to: 'on'
+  condition:
+    - condition: or
+      conditions:
         - condition: state
-          entity_id: device_tracker.iphone
-          state: home
+          entity_id: input_boolean.sleep_sofa
+          state: 'on'
+        - condition: and
+          conditions:
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: group.family
+                  state: "home"
+  action:
+    - service: humidifier.turn_on
+      entity_id: humidifier.dehumidifier_bedroom
+    - service: fan.turn_on
+      entity_id: fan.dehumidifier_bedroom
+
+- id: b2_1_bedroom_humidity_close
+  alias: B2-1 主臥除濕機關閉
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_bedroom_humidity
+      below: 55
+  condition:
+    - condition: state
+      entity_id: group.family
+      state: "home"
+  action:
+    - service: humidifier.turn_off
+      entity_id: humidifier.dehumidifier_bedroom
+    - service: fan.turn_off
+      entity_id: fan.dehumidifier_bedroom
+
+- id: b2__2_bedroom_humidity_close_nobody
+  alias: B2-2 主臥除濕機關閉（無人）
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_bedroom_humidity
+      below: 45
+  condition:
+    - condition: state
+      entity_id: group.family
+      state: "not_home"
+  action:
+    - service: humidifier.turn_off
+      entity_id: humidifier.dehumidifier_bedroom
+    - service: fan.turn_off
+      entity_id: fan.dehumidifier_bedroom
+
+# B3 - 次臥除濕機：濕度控制
+- id: b3_bedroom2_humidity_start
+  alias: B3 次臥除濕機啟用
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_bedroom2_humidity
+      above: 70
+  condition:
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: group.family
+          state: "home"
+        - condition: numeric_state
+          entity_id: sensor.dehumidifier_bedroom2_humidity
+          above: 50
+  action:
+    - service: humidifier.turn_on
+      entity_id: humidifier.dehumidifier_bedroom2
+    - service: fan.turn_on
+      entity_id: fan.dehumidifier_bedroom2
+
+- id: b3_1_bedroom2_humidity_close
+  alias: B3-1 次臥除濕機關閉
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_bedroom2_humidity
+      below: 55
+  condition:
+    - condition: state
+      entity_id: group.family
+      state: "home"
+  action:
+    - service: humidifier.turn_off
+      entity_id: humidifier.dehumidifier_bedroom2
+    - service: fan.turn_off
+      entity_id: fan.dehumidifier_bedroom2
+
+- id: b3_2_bedroom2_humidity_close_nobody
+  alias: B3-2 次臥除濕機關閉（無人）
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.dehumidifier_bedroom2_humidity
+      below: 45
+  condition:
+    - condition: state
+      entity_id: group.family
+      state: "not_home"
+  action:
+    - service: humidifier.turn_off
+      entity_id: humidifier.dehumidifier_bedroom2
+    - service: fan.turn_off
+      entity_id: fan.dehumidifier_bedroom2
+
+# B4 - 空氣清淨機與風扇控制
+- id: b4_humidity_start
+  alias: B4 空氣清淨機啟用
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_purifier_air_quality
+      above: 100
+  condition: []
+  action:
+    - service: fan.turn_on
+      entity_id: fan.air_purifier
+
+- id: b4_1_humidity_close
+  alias: B4-1 空氣清淨機關閉
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_purifier_air_quality
+      below: 50
+  condition: []
+  action:
+    - service: fan.turn_off
+      entity_id: fan.air_purifier
+      
+### C1. 主臥開門自動開燈（依情境判斷開哪些燈
+# 描述：門打開後依時間、天氣與先生是否在家決定開哪些燈
+# 條件排除：若晚間先生在家超過 00:00，避免亮燈打擾
+
+- id: c1_bedroom_door_light_on
+  alias: "C1 主臥門開啟時自動開燈"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.door_sensor_bedroom
+      to: 'on'
+  condition:
+    - condition: or
+      conditions:
+        - condition: and
+          conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'not_home'
+        - condition: and
+          conditions:
+            - condition: time
+              before: '00:00:00'
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: device_tracker.iphone
+                  state: 'home'
+    - condition: template
+      value_template: >
+        {{ states('weather.forecast_jia') == 'rainy' or now().hour < 17 or now().hour > 19 }}
+  action:
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'home'
+            - condition: time
+              after: '00:00:00'
+          sequence: []
+        - conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'home'
+          sequence:
+            - service: light.turn_on
+              data:
+                entity_id: light.lightbulb_bedroom_c
+        - conditions:
+            - condition: state
+              entity_id: device_tracker.iphone
+              state: 'not_home'
+          sequence:
+            - service: light.turn_on
+              target:
+                entity_id:
+                  - light.group_bedroom_lights
+      default: []
+
+
+### C2. 自動關燈（取消）
+# 本條已明確不需要，自動化略。
+
+# 接下來 C3（晚安模式控制主臥除濕機）將整合於 A 系列中，不重複列出。
+
+### D. 浴室相關自動化（D1～D6）
+
+# D1 - 洗澡模式啟動判斷（先生在家）
+- id: d1_shower_mode_detect
+  alias: D1 洗澡模式啟動（先生在家）
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_bathroom_w
+      to: 'on'
+      for:
+        minutes: 8
+  condition:
+    - condition: state
+      entity_id: device_tracker.iphone
+      state: 'home'
+    - condition: numeric_state
+      entity_id: sensor.bedroom_outside_temp
+      above: 25
+    - condition: state
+      entity_id: climate.bedroom
+      state: 'off'
+  action:
+    - service: script.turn_on
+      target:
+        entity_id: script.shower_ac_on
+
+# D3 - 浴室燈光控制（非暖風機狀態下）
+- id: d3_bathroom_light_on
+  alias: D3 浴室進入開燈（排除暖風機）
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_bathroom_d
+      to: 'on'
+  condition:
+    - condition: state
+      entity_id: input_boolean.bathroom_heater_mode
+      state: 'off'
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.switch_bathroom2_light
+
+- id: d4_bathroom_light_off 
+  alias: D4 浴室無人自動關燈（排除暖風機）
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_bathroom_d
+      to: 'off'
+      for:
+        minutes: 2
+  condition:
+    - condition: state
+      entity_id: binary_sensor.door_sensor_bathroom
+      state: 'closed'
+    - condition: state
+      entity_id: input_boolean.bathroom_heater_mode
+      state: 'off'
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.switch_bathroom2_light
+
+# D5 - 暖風機啟動偵測（進入模式）
+- id: d5_bathroom_heater_on
+  alias: D5 暖風機模式啟動
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_bathroom_d
+      to: 'on'
+  condition:
+    - condition: state
+      entity_id: binary_sensor.door_sensor_bathroom
+      state: 'closed'
+    - condition: template
+      value_template: >
+        {{ (now() - states.input_datetime.last_motion_bathroom_d.last_changed).seconds > 300 }}
   action:
     - service: input_boolean.turn_on
       target:
-        entity_id: input_boolean.come_home_mode
-    - delay: "00:00:02"
+        entity_id: input_boolean.bathroom_heater_mode
+
+# D6 - 暖風機結束偵測（離開模式）
+- id: d6_bathroom_heater_off
+  alias: D6 暖風機模式解除
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.door_sensor_bathroom
+      to: 'open'
+  action:
     - service: input_boolean.turn_off
       target:
-        entity_id: input_boolean.come_home_mode
-    - choose:
-        - conditions:
-            - condition: or
-              conditions:
-                - condition: state
-                  entity_id: input_boolean.water_full_livingroom
-                  state: "on"
-                - condition: state
-                  entity_id: input_boolean.water_full_bedroom
-                  state: "on"
-                - condition: state
-                  entity_id: input_boolean.water_full_bedroom2
-                  state: "on"
-          sequence:
-            - variables:
-                msg: >-
-                  {% set msg_list = [] %}
-                  {% if is_state('input_boolean.water_full_livingroom', 'on') %}
-                    {% set _ = msg_list.append('客廳除濕機') %}
-                  {% endif %}
-                  {% if is_state('input_boolean.water_full_bedroom', 'on') %}
-                    {% set _ = msg_list.append('主臥除濕機') %}
-                  {% endif %}
-                  {% if is_state('input_boolean.water_full_bedroom2', 'on') %}
-                    {% set _ = msg_list.append('次臥除濕機') %}
-                  {% endif %}
-                  {{ msg_list | join('、') ~ '可能已滿水，請確認是否需要倒水。' }}
-            - service: tts.google_translate_say
-              data:
-                entity_id: media_player.ke_ting
-                message: "{{ msg }}"
+        entity_id: input_boolean.bathroom_heater_mode
+
